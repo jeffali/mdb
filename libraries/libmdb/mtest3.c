@@ -3,63 +3,8 @@
 #include <time.h>
 #include "mdb.h"
 
-int create_empty()
-{
-    int i = 0, rc;
-    MDB_env *env;
-    MDB_db *db;
-    MDB_val key, data;
-    MDB_txn *txn;
-    MDB_stat *mst;
-    int count;
-    int *values;
-    char sval[32];
-
-    srandom(time(NULL));
-
-    count = random()%512;        
-    values = (int *)malloc(count*sizeof(int));
-    
-    for(i = 0;i<count;i++) {
-        values[i] = random()%1024;
-    }
-    
-    rc = mdbenv_create(&env, 10485760);
-    rc = mdbenv_open(env, "/tmp/testdb.000", MDB_FIXEDMAP, 0664);
-    rc = mdb_txn_begin(env, 0, &txn);
-    rc = mdb_open(env, txn, NULL, 0, &db);
-#if 0 
-key.mv_size = sizeof(int);
-key.mv_data = sval;
-data.mv_size = sizeof(sval);
-data.mv_data = sval;
-
-for (i=0;i<count;i++) {    
-    sprintf(sval, "%03x %d foo bar", values[i], values[i]);
-    mdb_put(db, txn, &key, &data, 0);
-}        
-#endif
-    rc = mdb_txn_commit(txn);
-#if 0
-rc = mdbenv_stat(env, &mst);
-
-for (i= count - 1; i > -1; i-= (random()%5)) {    
-    rc = mdb_txn_begin(env, 0, &txn);
-    sprintf(sval, "%03x ", values[i]);
-    rc = mdb_del(db, txn, &key, NULL);
-    rc = mdb_txn_commit(txn);
-}
-#endif
-    free(values);
-    rc = mdbenv_stat(env, &mst);
-    mdb_close(db);
-    mdbenv_close(env);
-
-    return 0;
-}
-
 #define TWENTY 260
-int create_20(int count, char *dbname)
+int createp_20(int count, char *dbname)
 {
     int i = 0, rc;
     MDB_env *env;
@@ -113,8 +58,6 @@ int create_20(int count, char *dbname)
     
     rc = mdbenv_create(&env, 10485760);
     rc = mdbenv_open(env, dbname, MDB_FIXEDMAP, 0664);
-    rc = mdb_txn_begin(env, 0, &txn);
-    rc = mdb_open(env, txn, NULL, 0, &db);
 
     key.mv_size = sizeof(int);
     key.mv_data = sval;
@@ -122,11 +65,13 @@ int create_20(int count, char *dbname)
     data.mv_data = sval;
     
     for (i=0;i<count;i++) {    
+        rc = mdb_txn_begin(env, 0, &txn);
+        rc = mdb_open(env, txn, NULL, 0, &db);
         sprintf(sval, "X%03xY%dfghijkZ", values[i], values[i]);
         mdb_put(db, txn, &key, &data, 0);
+        rc = mdb_txn_commit(txn);
     }        
 
-    rc = mdb_txn_commit(txn);
 #if 0
 rc = mdbenv_stat(env, &mst);
 
@@ -147,17 +92,16 @@ for (i= count - 1; i > -1; i-= (random()%5)) {
 
 int main(int argc,char * argv[])
 {
-    create_empty();
-//    create_20(1,"/tmp/testdb.001");
-//    create_20(2,"/tmp/testdb.002");
-//    create_20(3,"/tmp/testdb.003");
-//    create_20(4,"/tmp/testdb.004");
-//    create_20(20,"/tmp/testdb.020");
-//    create_20(40,"/tmp/testdb.040");
-//    create_20(100,"/tmp/testdb.100");
-//    create_20(200,"/tmp/testdb.200");
-    create_20(255,"/tmp/testdb.255");
-//    create_20(260,"/tmp/testdb.260");
+//    createp_20(1,"/tmp/ptestdb.001");
+//    createp_20(2,"/tmp/ptestdb.002");
+//    createp_20(3,"/tmp/ptestdb.003");
+//    createp_20(4,"/tmp/ptestdb.004");
+//    createp_20(20,"/tmp/ptestdb.020");
+//    createp_20(40,"/tmp/ptestdb.040");
+//    createp_20(100,"/tmp/ptestdb.100");
+//    createp_20(200,"/tmp/ptestdb.200");
+//    createp_20(255,"/tmp/ptestdb.255");
+    createp_20(260,"/tmp/ptestdb.260");
     return 0;
 }
 
