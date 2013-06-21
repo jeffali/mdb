@@ -19,7 +19,7 @@
 
 MDB_env *env;
 
-int step1BatchAdd()
+void *step1BatchAdd(void *x)
 {
     int i = 0, j = 0, rc;
     MDB_dbi dbi;
@@ -35,11 +35,11 @@ int step1BatchAdd()
 
     srandom(time(NULL));
 
-    count = (random()%384) + 64;
+    count = (random()%23841) + 64;
     values = (int *)malloc(count*sizeof(int));
 
     for(i = 0;i<count;i++) {
-      values[i] = random()%1024;
+      values[i] = random()%25024;
     }
    
     key.mv_size = sizeof(int);
@@ -64,7 +64,7 @@ int step1BatchAdd()
     return 0;
 }
 
-int step1BatchDelete()
+void *step1BatchDelete(void *x)
 {
     int i = 0, j = 0, rc;
     MDB_dbi dbi;
@@ -75,13 +75,14 @@ int step1BatchDelete()
     int *values;
     char sval[32];
 
-    srandom(time(NULL));
 
-    count = (random()%384) + 64;
+    srandom(time(NULL) - 166626);
+
+    count = (random()%9384) + 64;
     values = (int *)malloc(count*sizeof(int));
 
     for(i = 0;i<count;i++) {
-      values[i] = random()%1024;
+      values[i] = random()%9024;
     }
    
     key.mv_size = sizeof(int);
@@ -91,7 +92,7 @@ int step1BatchDelete()
 
     j=0;
     key.mv_data = sval;
-    for (i= count - 1; i > -1; i-= (random()%5)) {  
+    for (i= count - 1; i > -1; i-= (random()%9000)) {  
       j++;
       txn=NULL;
       rc = mdb_txn_begin(env, NULL, 0, &txn);
@@ -113,6 +114,43 @@ int step1BatchDelete()
     return 0;
 }
 
+void *step1BatchDeleteWithCursor(void *x)
+{
+    int i = 0, rc;
+    MDB_dbi dbi;
+    MDB_val key, data;
+    MDB_txn *txn;
+    MDB_cursor *cur2;
+
+    printf("Deleting with cursor\n");
+    rc = mdb_txn_begin(env, NULL, 0, &txn);
+    rc = mdb_open(txn, NULL, 0, &dbi);
+    rc = mdb_cursor_open(txn, dbi, &cur2);
+
+    for (i=0; i<50; i++) {
+      rc = mdb_cursor_get(cur2, &key, &data, MDB_NEXT);
+      printf("key: %p %.*s, data: %p %.*s\n",
+        key.mv_data,  (int) key.mv_size,  (char *) key.mv_data,
+        data.mv_data, (int) data.mv_size, (char *) data.mv_data);
+      rc = mdb_del(txn, dbi, &key, NULL);
+    }
+
+    printf("Restarting cursor in txn\n");
+    rc = mdb_cursor_get(cur2, &key, &data, MDB_FIRST);
+    printf("key: %p %.*s, data: %p %.*s\n",
+      key.mv_data,  (int) key.mv_size,  (char *) key.mv_data,
+      data.mv_data, (int) data.mv_size, (char *) data.mv_data);
+    for (i=0; i<32; i++) {
+      rc = mdb_cursor_get(cur2, &key, &data, MDB_NEXT);
+      printf("key: %p %.*s, data: %p %.*s\n",
+        key.mv_data,  (int) key.mv_size,  (char *) key.mv_data,
+        data.mv_data, (int) data.mv_size, (char *) data.mv_data);
+    }
+    mdb_cursor_close(cur2);
+    rc = mdb_txn_commit(txn);
+    return 0;
+}
+
 int main(int argc,char * argv[])
 {
     int rc;
@@ -120,8 +158,56 @@ int main(int argc,char * argv[])
     rc = mdb_env_set_mapsize(env, 10485760);
     rc = mdb_env_open(env, "/tmp/paradb", 0/*MDB_FIXEDMAP |MDB_NOSYNC*/, 0664);
 
-    rc = step1BatchAdd();
-    rc = step1BatchDelete();
+    int nbthreads = 10;
+
+    pthread_t ta[17*2];
+    pthread_t tc[14*2];
+    pthread_t td[31];
+    int i = 0;
+
+    //rc = step1BatchAdd();
+    for(i=0;i<17;i++)
+    {
+       pthread_create(ta+i, NULL, step1BatchAdd, NULL);
+    }
+    //rc = step1BatchDeleteWithCursor();
+    for(i=0;i<14;i++)
+    {
+       pthread_create(tc+i, NULL, step1BatchDeleteWithCursor, NULL);
+    }
+
+    //rc = step1BatchDelete();
+    for(i=0;i<31;i++)
+    {
+       pthread_create(td+i, NULL, step1BatchDelete, NULL);
+    }
+
+    //rc = step1BatchAdd();
+    for(i=17;i<17*2;i++)
+    {
+       pthread_create(ta+i, NULL, step1BatchAdd, NULL);
+    }
+    //rc = step1BatchDeleteWithCursor();
+    for(i=14;i<14*2;i++)
+    {
+       pthread_create(tc+i, NULL, step1BatchDeleteWithCursor, NULL);
+    }
+
+    //joining
+    for(i=0;i<17*2;i++)
+    {
+       if (pthread_join(ta[i], NULL)) printf("Problem joining add %d\n", i);
+    }
+
+    for(i=0;i<31;i++)
+    {
+       if (pthread_join(td[i], NULL)) printf("Problem joining del %d\n", i);
+    }
+
+    for(i=0;i<14*2;i++)
+    {
+       if (pthread_join(tc[i], NULL)) printf("Problem joining delc %d\n", i);
+    }
 
     mdb_env_close(env);
     return 0;
