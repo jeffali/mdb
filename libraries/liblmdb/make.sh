@@ -1,5 +1,5 @@
 #!/bin/bash
-GCC="gcc -pthread -O2 -g -W -Wall -Wno-unused-parameter -Wbad-function-cast  -fPIC"
+GCC="gcc -std=c99 -pthread -O2 -g -W -Wall -Wno-unused-parameter -Wbad-function-cast  -fPIC"
 
 $GCC -c mdb.c
 $GCC -c midl.c

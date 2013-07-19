@@ -19,6 +19,10 @@
 
 MDB_env *env;
 
+#define REPEATADD  10
+#define REPEATDEL  10
+#define REPEATRMC  10
+
 void *step1BatchAdd(void *x)
 {
     int i = 0, j = 0, rc;
@@ -38,6 +42,7 @@ void *step1BatchAdd(void *x)
     count = (random()%23841) + 64;
     values = (int *)malloc(count*sizeof(int));
 
+for(int k=0;k<REPEATADD;k++){
     for(i = 0;i<count;i++) {
       values[i] = random()%25024;
     }
@@ -58,6 +63,7 @@ void *step1BatchAdd(void *x)
        }
     }
     if (j) printf("%d duplicates skipped\n", j);
+}
     rc = mdb_txn_commit(txn);
     rc = mdb_env_stat(env, &mst);
     free(values);
@@ -81,6 +87,7 @@ void *step1BatchDelete(void *x)
     count = (random()%9384) + 64;
     values = (int *)malloc(count*sizeof(int));
 
+for(int k=0;k<REPEATDEL;k++){
     for(i = 0;i<count;i++) {
       values[i] = random()%9024;
     }
@@ -107,9 +114,9 @@ void *step1BatchDelete(void *x)
       }
       mdb_close(env, dbi);
     }
-    free(values);
     printf("Deleted %d values\n", j);
-
+}
+    free(values);
     rc = mdb_env_stat(env, &mst);
     return 0;
 }
@@ -171,10 +178,12 @@ int main(int argc,char * argv[])
        pthread_create(ta+i, NULL, step1BatchAdd, NULL);
     }
     //rc = step1BatchDeleteWithCursor();
+#if 0
     for(i=0;i<14;i++)
     {
        pthread_create(tc+i, NULL, step1BatchDeleteWithCursor, NULL);
     }
+#endif
 
     //rc = step1BatchDelete();
     for(i=0;i<31;i++)
@@ -187,12 +196,13 @@ int main(int argc,char * argv[])
     {
        pthread_create(ta+i, NULL, step1BatchAdd, NULL);
     }
+#if 0
     //rc = step1BatchDeleteWithCursor();
     for(i=14;i<14*2;i++)
     {
        pthread_create(tc+i, NULL, step1BatchDeleteWithCursor, NULL);
     }
-
+#endif
     //joining
     for(i=0;i<17*2;i++)
     {
@@ -204,11 +214,12 @@ int main(int argc,char * argv[])
        if (pthread_join(td[i], NULL)) printf("Problem joining del %d\n", i);
     }
 
+#if 0
     for(i=0;i<14*2;i++)
     {
        if (pthread_join(tc[i], NULL)) printf("Problem joining delc %d\n", i);
     }
-
+#endif
     mdb_env_close(env);
     return 0;
 }
