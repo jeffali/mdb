@@ -29,7 +29,8 @@ void *step1BatchAdd(void *x)
     MDB_stat mst;
     int count;
     int *values;
-    char sval[32];
+    char kval[32];
+    char sval[64];
 
     rc = mdb_txn_begin(env, NULL, 0, &txn);
     rc = mdb_open(txn, NULL, 0, &dbi);
@@ -43,13 +44,14 @@ void *step1BatchAdd(void *x)
       values[i] = random()%25024;
     }
    
-    key.mv_size = sizeof(int);
-    key.mv_data = sval;
+    key.mv_size = sizeof(kval);
+    key.mv_data = kval;
     data.mv_size = sizeof(sval);
     data.mv_data = sval;
 
     printf("Adding %d values\n", count);
     for (i=0;i<count;i++) {  
+       sprintf(kval, "%lu", values[i]);
        sprintf(sval, "%03x %d foo bar", values[i], values[i]);
        rc = mdb_put(txn, dbi, &key, &data, MDB_NOOVERWRITE);
        if (rc) {
@@ -69,13 +71,12 @@ void *step1BatchDelete(void *x)
 {
     int i = 0, j = 0, rc;
     MDB_dbi dbi;
-    MDB_val key, data;
+    MDB_val key;
     MDB_txn *txn;
     MDB_stat mst;
     int count;
     int *values;
-    char sval[32];
-
+    char kval[32];
 
     srandom(time(NULL) - 166626);
 
@@ -86,19 +87,16 @@ void *step1BatchDelete(void *x)
       values[i] = random()%9024;
     }
    
-    key.mv_size = sizeof(int);
-    key.mv_data = sval;
-    data.mv_size = sizeof(sval);
-    data.mv_data = sval;
+    key.mv_size = sizeof(kval);
+    key.mv_data = kval;
 
     j=0;
-    key.mv_data = sval;
     for (i= count - 1; i > -1; i-= (random()%9000)) {  
       j++;
       txn=NULL;
       rc = mdb_txn_begin(env, NULL, 0, &txn);
       rc = mdb_open(txn, NULL, 0, &dbi);
-      sprintf(sval, "%03x ", values[i]);
+      sprintf(kval, "%lu", values[i]);
       rc = mdb_del(txn, dbi, &key, NULL);
       if (rc) {
         j--;

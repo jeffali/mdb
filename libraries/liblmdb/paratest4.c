@@ -20,6 +20,12 @@
 #include <fcntl.h>
 MDB_env *env;
 
+typedef struct stepper {
+   unsigned long int start;
+   unsigned long int nb;
+   unsigned long int step; //or modulo for delete ops
+} stepper;
+
 void *step1BatchAdd(void *x)
 {
     int i = 0, j = 0, rc;
@@ -29,28 +35,35 @@ void *step1BatchAdd(void *x)
     MDB_stat mst;
     int count;
     int *values;
-    char sval[32];
+    char kval[32];
+    char sval[64];
+
+    stepper *s = (stepper *) x;
 
     rc = mdb_txn_begin(env, NULL, 0, &txn);
     rc = mdb_open(txn, NULL, 0, &dbi);
 
     srandom(time(NULL));
 
-    count = (random()%23841) + 64;
+    count = s->nb; //(random()%23841) + 64;
     values = (int *)malloc(count*sizeof(int));
 
     for(i = 0;i<count;i++) {
-      values[i] = random()%25024;
+      values[i] = 1 + i + s->start; //random()%25024;
     }
    
-    key.mv_size = sizeof(int);
-    key.mv_data = sval;
+    key.mv_size = sizeof(kval);
+    key.mv_data = kval;
     data.mv_size = sizeof(sval);
     data.mv_data = sval;
 
-    printf("Adding %d values\n", count);
+    printf("[%lu] Adding %d values\n", pthread_self(), count);
     for (i=0;i<count;i++) {  
+       sprintf(kval, "%lu", values[i]);
+       key.mv_size = strlen(kval) + 1;
        sprintf(sval, "%03x %d foo bar", values[i], values[i]);
+       data.mv_size = strlen(sval) + 1;
+       //printf("[%lu] Add key %s\n", pthread_self(), kval);
        rc = mdb_put(txn, dbi, &key, &data, MDB_NOOVERWRITE);
        if (rc) {
          j++;
@@ -58,14 +71,14 @@ void *step1BatchAdd(void *x)
          data.mv_data = sval;
        }
     }
-    if (j) printf("%d duplicates skipped\n", j);
+    if (j) printf("[%lu] %d duplicates skipped\n", pthread_self(), j);
     rc = mdb_txn_commit(txn);
     rc = mdb_env_stat(env, &mst);
     free(values);
     return 0;
 }
 
-void *step1BatchDelete(void *x)
+void *step1UnbatchedAdd(void *x)
 {
     int i = 0, j = 0, rc;
     MDB_dbi dbi;
@@ -74,9 +87,74 @@ void *step1BatchDelete(void *x)
     MDB_stat mst;
     int count;
     int *values;
-    char sval[32];
+    char kval[32];
+    char sval[64];
 
+    stepper *s = (stepper *) x;
+    //printf("STEPPPPPPPPPPPPPPPPP = %ld\n", s->step);
+    srandom(time(NULL));
 
+    count = s->nb; //(random()%23841) + 64;
+    values = (int *)malloc(count*sizeof(int));
+
+    for(i = 0;i<count;i++) {
+      values[i] = 1 + s->start + i; //random()%25024;
+    }
+   
+    key.mv_size = sizeof(kval);
+    key.mv_data = kval;
+    data.mv_size = sizeof(sval);
+    data.mv_data = sval;
+
+    printf("[%lu] Adding %d values\n", pthread_self(), count);
+    for (i=0;i<count;i++) {  
+      txn=NULL;
+      rc = mdb_txn_begin(env, NULL, 0, &txn);
+      rc = mdb_open(txn, NULL, 0, &dbi);
+
+       sprintf(kval, "%lu", values[i]);
+       key.mv_size = strlen(kval);
+       sprintf(sval, "%03x %d foo bar", values[i], values[i]);
+       data.mv_size = strlen(sval);
+       //printf("[%lu] Add key %s\n", pthread_self(), kval);
+       rc = mdb_put(txn, dbi, &key, &data, MDB_NOOVERWRITE);
+       if (rc) {
+         j++;
+         data.mv_size = sizeof(sval);
+         data.mv_data = sval;
+         mdb_txn_abort(txn);
+       } else {
+         rc = mdb_txn_commit(txn);
+       }
+       mdb_close(env, dbi);
+    }
+    if (j) printf("[%lu] %d duplicates skipped\n", pthread_self(), j);
+    rc = mdb_env_stat(env, &mst);
+    free(values);
+    return 0;
+}
+
+void *step1BatchDelete(void *x)
+{
+    unsigned long int i = 0; int j = 0, rc;
+    MDB_dbi dbi;
+    MDB_val key, data;
+    MDB_txn *txn;
+    MDB_stat mst;
+    int count;
+#if 0
+    int *values;
+#endif
+    char kval[32];
+    char sval[64];
+    stepper *s = (stepper *) x;
+#if 0
+    for (i= s->start; i < s->nb; ++i) {
+    //printf("I=%ld start=%ld,nb=%ld,st=%ld\n",i,s->start, s->nb, s->step);
+    }
+    return 0;
+#endif
+#if 0
     srandom(time(NULL) - 166626);
 
     count = (random()%9384) + 64;
@@ -85,20 +163,23 @@ void *step1BatchDelete(void *x)
     for(i = 0;i<count;i++) {
       values[i] = random()%9024;
     }
-   
-    key.mv_size = sizeof(int);
-    key.mv_data = sval;
+#endif 
+    key.mv_size = sizeof(kval);
+    key.mv_data = kval;
     data.mv_size = sizeof(sval);
     data.mv_data = sval;
 
     j=0;
-    key.mv_data = sval;
-    for (i= count - 1; i > -1; i-= (random()%9000)) {  
+    for (i= s->start; i < s->nb; ++i) {
+    //for (i= s->nb; i >= s->start; i--) 
+      if((i%(s->step)) != 0) continue;
+      //printf("I=%lu start=%ld,nb=%ld,st=%ld\n",i,s->start, s->nb, s->step);
       j++;
       txn=NULL;
       rc = mdb_txn_begin(env, NULL, 0, &txn);
       rc = mdb_open(txn, NULL, 0, &dbi);
-      sprintf(sval, "%03x ", values[i]);
+      sprintf(kval, "%lu", i);
+      key.mv_size = strlen(kval) + 1;
       rc = mdb_del(txn, dbi, &key, NULL);
       if (rc) {
         j--;
@@ -108,8 +189,10 @@ void *step1BatchDelete(void *x)
       }
       mdb_close(env, dbi);
     }
+#if 0
     free(values);
-    printf("Deleted %d values\n", j);
+#endif
+    printf("[%lu] Deleted %d values\n", pthread_self(), j);
 
     rc = mdb_env_stat(env, &mst);
     return 0;
@@ -122,6 +205,8 @@ void *step1BatchDeleteWithCursor(void *x)
     MDB_val key, data;
     MDB_txn *txn;
     MDB_cursor *cur2;
+    stepper *s = (stepper *) x;
+    return 0;
 
     printf("Deleting with cursor\n");
     rc = mdb_txn_begin(env, NULL, 0, &txn);
@@ -247,45 +332,69 @@ int main(int argc, char * argv[])
     rc = mdb_env_set_mapsize(env, 10485760);
     rc = mdb_env_open(env, "/tmp/paradb", 0/*MDB_FIXEDMAP |MDB_NOSYNC*/, 0664);
 
-    int nbthreads = 10;
-
     pthread_t ta[17*2];
     pthread_t tc[14*2];
     pthread_t td[31];
-    int i = 0;
 
+    unsigned long j = 0;
+    stepper sa[17*2];
+    stepper scd[14*2+31];
+
+    for(j=0; j<17; j++) {
+       sa[j].start = j*2000;
+       sa[j].nb =  2000;
+       sa[j].step = 1;
+    }
+    for(j=0; j<17; j++) {
+       sa[17+j].start = (17+0)*2000 + j*1000;
+       sa[17+j].nb =  1000;
+       sa[17+j].step = 1;
+    }
+    for(j=0;j<14*2+31; j++) {
+       scd[j].start = 0;
+       scd[j].nb =  17*20+17*20; //(j+14)*20;
+       if((j+14)*20 > 17*20+17*10) {
+          scd[j].nb = 17*20+17*10 - scd[j].start ;
+       }
+       scd[j].step = 13; //5, 7, 11
+       if(j%6==0) scd[j].step = 5; //5, 7, 11
+       if(j%8==0) scd[j].step = 7; //5, 7, 11
+       if(j%10==0) scd[j].step = 11; //5, 7, 11
+    }
+
+    int i = 0;
     //rc = step1BatchAdd();
     LockUnlock(pnum, &fl1, &fl2, &fd1, &fd2);
     for(i=0;i<17;i++)
     {
-       pthread_create(ta+i, NULL, step1BatchAdd, NULL);
+       pthread_create(ta+i, NULL, step1BatchAdd, (void *)&sa[i]);
     }
 
     //rc = step1BatchDeleteWithCursor();
     LockUnlock((pnum%2)+3, &fl1, &fl2, &fd1, &fd2);
     for(i=0;i<14;i++)
     {
-       pthread_create(tc+i, NULL, step1BatchDeleteWithCursor, NULL);
+       pthread_create(tc+i, NULL, step1BatchDeleteWithCursor, (void *)&scd[i]);
     }
 
     //rc = step1BatchDelete();
     LockUnlock(pnum+2, &fl1, &fl2, &fd1, &fd2);
     for(i=0;i<31;i++)
     {
-       pthread_create(td+i, NULL, step1BatchDelete, NULL);
+       pthread_create(td+i, NULL, step1BatchDelete, (void *)&scd[2*14+i]);
     }
 
-    //rc = step1BatchAdd();
+    //rc = step1UnbatchedAdd();
     LockUnlock((pnum%2)+3, &fl1, &fl2, &fd1, &fd2);
     for(i=17;i<17*2;i++)
     {
-       pthread_create(ta+i, NULL, step1BatchAdd, NULL);
+       pthread_create(ta+i, NULL, step1UnbatchedAdd, (void *)&sa[i]);
     }
     //rc = step1BatchDeleteWithCursor();
     LockUnlock(pnum+2, &fl1, &fl2, &fd1, &fd2);
     for(i=14;i<14*2;i++)
     {
-       pthread_create(tc+i, NULL, step1BatchDeleteWithCursor, NULL);
+       pthread_create(tc+i, NULL, step1BatchDeleteWithCursor, (void *)&scd[i]);
     }
     //LockUnlock(pnum+4, &fl1, &fl2, &fd1, &fd2); IF LAST WAS (pnum%2)+3
     LockUnlock((pnum%2)+5, &fl1, &fl2, &fd1, &fd2); //IF LAST WAS pnum+2
