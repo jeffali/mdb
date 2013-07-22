@@ -52,13 +52,11 @@ void *step1BatchAdd(void *x)
       values[i] = 1 + i + s->start; //random()%25024;
     }
    
-    key.mv_size = sizeof(kval);
     key.mv_data = kval;
-    data.mv_size = sizeof(sval);
     data.mv_data = sval;
 
     printf("[%lu] Adding %d values\n", pthread_self(), count);
-    for (i=0;i<count;i++) {  
+    for (i=0;i<count;i++) {
        sprintf(kval, "%lu", values[i]);
        key.mv_size = strlen(kval) + 1;
        sprintf(sval, "%03x %d foo bar", values[i], values[i]);
@@ -67,8 +65,6 @@ void *step1BatchAdd(void *x)
        rc = mdb_put(txn, dbi, &key, &data, MDB_NOOVERWRITE);
        if (rc) {
          j++;
-         data.mv_size = sizeof(sval);
-         data.mv_data = sval;
        }
     }
     if (j) printf("[%lu] %d duplicates skipped\n", pthread_self(), j);
@@ -101,9 +97,7 @@ void *step1UnbatchedAdd(void *x)
       values[i] = 1 + s->start + i; //random()%25024;
     }
    
-    key.mv_size = sizeof(kval);
     key.mv_data = kval;
-    data.mv_size = sizeof(sval);
     data.mv_data = sval;
 
     printf("[%lu] Adding %d values\n", pthread_self(), count);
@@ -113,15 +107,13 @@ void *step1UnbatchedAdd(void *x)
       rc = mdb_open(txn, NULL, 0, &dbi);
 
        sprintf(kval, "%lu", values[i]);
-       key.mv_size = strlen(kval);
+       key.mv_size = strlen(kval) + 1;
        sprintf(sval, "%03x %d foo bar", values[i], values[i]);
-       data.mv_size = strlen(sval);
+       data.mv_size = strlen(sval) + 1;
        //printf("[%lu] Add key %s\n", pthread_self(), kval);
        rc = mdb_put(txn, dbi, &key, &data, MDB_NOOVERWRITE);
        if (rc) {
          j++;
-         data.mv_size = sizeof(sval);
-         data.mv_data = sval;
          mdb_txn_abort(txn);
        } else {
          rc = mdb_txn_commit(txn);
@@ -152,8 +144,8 @@ void *step1BatchDelete(void *x)
     for (i= s->start; i < s->nb; ++i) {
     //printf("I=%ld start=%ld,nb=%ld,st=%ld\n",i,s->start, s->nb, s->step);
     }
-    return 0;
 #endif
+    return 0;
 #if 0
     srandom(time(NULL) - 166626);
 
@@ -164,9 +156,7 @@ void *step1BatchDelete(void *x)
       values[i] = random()%9024;
     }
 #endif 
-    key.mv_size = sizeof(kval);
     key.mv_data = kval;
-    data.mv_size = sizeof(sval);
     data.mv_data = sval;
 
     j=0;
@@ -369,12 +359,20 @@ int main(int argc, char * argv[])
     {
        pthread_create(ta+i, NULL, step1BatchAdd, (void *)&sa[i]);
     }
+    for(i=0;i<17;i++)
+    {
+       if (pthread_join(ta[i], NULL)) printf("Problem joining add %d\n", i);
+    }
 
     //rc = step1BatchDeleteWithCursor();
     LockUnlock((pnum%2)+3, &fl1, &fl2, &fd1, &fd2);
     for(i=0;i<14;i++)
     {
        pthread_create(tc+i, NULL, step1BatchDeleteWithCursor, (void *)&scd[i]);
+    }
+    for(i=0;i<14;i++)
+    {
+       if (pthread_join(tc[i], NULL)) printf("Problem joining delc %d\n", i);
     }
 
     //rc = step1BatchDelete();
@@ -383,6 +381,11 @@ int main(int argc, char * argv[])
     {
        pthread_create(td+i, NULL, step1BatchDelete, (void *)&scd[2*14+i]);
     }
+    for(i=0;i<31;i++)
+    {
+       if (pthread_join(td[i], NULL)) printf("Problem joining del %d\n", i);
+    }
+
 
     //rc = step1UnbatchedAdd();
     LockUnlock((pnum%2)+3, &fl1, &fl2, &fd1, &fd2);
@@ -390,30 +393,27 @@ int main(int argc, char * argv[])
     {
        pthread_create(ta+i, NULL, step1UnbatchedAdd, (void *)&sa[i]);
     }
+    for(i=17;i<17*2;i++)
+    {
+       if (pthread_join(ta[i], NULL)) printf("Problem joining add %d\n", i);
+    }
+
     //rc = step1BatchDeleteWithCursor();
     LockUnlock(pnum+2, &fl1, &fl2, &fd1, &fd2);
     for(i=14;i<14*2;i++)
     {
        pthread_create(tc+i, NULL, step1BatchDeleteWithCursor, (void *)&scd[i]);
     }
+    for(i=14;i<14*2;i++)
+    {
+       if (pthread_join(tc[i], NULL)) printf("Problem joining delc %d\n", i);
+    }
+
     //LockUnlock(pnum+4, &fl1, &fl2, &fd1, &fd2); IF LAST WAS (pnum%2)+3
     LockUnlock((pnum%2)+5, &fl1, &fl2, &fd1, &fd2); //IF LAST WAS pnum+2
 
     //joining
-    for(i=0;i<17*2;i++)
-    {
-       if (pthread_join(ta[i], NULL)) printf("Problem joining add %d\n", i);
-    }
 
-    for(i=0;i<31;i++)
-    {
-       if (pthread_join(td[i], NULL)) printf("Problem joining del %d\n", i);
-    }
-
-    for(i=0;i<14*2;i++)
-    {
-       if (pthread_join(tc[i], NULL)) printf("Problem joining delc %d\n", i);
-    }
 
     mdb_env_close(env);
     close(fd1);
